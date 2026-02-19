@@ -106,7 +106,7 @@ th{
 
 <nav>
   <div class="logo">Mr. Ahmed Mohie - Admin</div>
-  <div class="nav-title">الصف الثاني الثانوي</div>
+  <div class="nav-title">الصف الاول الثانوي</div>
 </nav>
 
 <div class="container">
@@ -231,7 +231,17 @@ function renderStudent(student){
   const nameLabel = headers[2] || 'Name';
   const idLabel = headers[0] || 'ID';
   const displayName = student[2] || student[1] || '';
-  const displayId = student[0] || '';
+  const idIndex = headers.findIndex(h => 
+  h && (
+    h.toString().toLowerCase().includes("رقم") ||
+    h.toString().toLowerCase().includes("id") ||
+    h.toString().toLowerCase().includes("code") ||
+    h.toString().includes("كود")
+  )
+);
+
+const displayId = idIndex !== -1 ? student[idIndex] : '';
+
 
   html += `<div class="student-header"><div class="student-meta"><div style="font-weight:700">${nameLabel}</div><div>${displayName}</div></div><div class="student-meta"><div style="font-weight:700">${idLabel}</div><div>${displayId}</div></div></div>`;
 
@@ -264,13 +274,36 @@ async function saveMarks(id){
   });
 
   try{
-    const res = await fetch(API_URL,{
-      method:"POST",
-      headers: { 'Content-Type': 'application/json' },
-      body:JSON.stringify({ action:"updateMarks", studentId:id, marks:marks })
-    });
-    const data = await res.json().catch(()=>null);
-    alert("Updated Successfully");
+    // normalize id before sending
+    const idTrim = (id || '').toString().trim();
+    const numericId = idTrim.replace(/\D/g, '');
+    const sendId = (numericId && numericId.length >= 5) ? numericId : idTrim;
+
+    const payload = { action: "updateMarks", studentId: sendId, marks };
+    console.log('update payload', payload);
+
+    // send as form-encoded to avoid preflight CORS (Apps Script accepts form data)
+    const form = new URLSearchParams();
+    form.append('action', 'updateMarks');
+    form.append('studentId', sendId);
+    form.append('marks', JSON.stringify(marks));
+
+    const res = await fetch(API_URL, { method: 'POST', body: form });
+
+    const text = await res.text();
+    let data = null;
+    try{ data = JSON.parse(text); }catch(e){ /* not JSON */ }
+    console.log('update response raw', text, 'status', res.status);
+
+    if (data && data.status === 'success'){
+      alert("Updated Successfully");
+      await loadData(true, false);
+    } else if (data && data.status === 'not found'){
+      alert('Update failed: student not found');
+    } else {
+      // Show server response text for debugging
+      alert('Update failed: ' + (text || ('HTTP ' + res.status)));
+    }
   }catch(err){
     console.error(err);
     alert('Update failed');
